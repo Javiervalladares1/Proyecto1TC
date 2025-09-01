@@ -1,0 +1,14 @@
+digraph DFA {
+  rankdir=LR; layout=dot; splines=true; overlap=false; concentrate=true; outputorder=edgesfirst; nodesep=0.7; ranksep=1.1; margin=0.25;
+  labelloc="t"; label="AFD Minimizado (partitions)"; fontsize=20; fontname="Helvetica";
+  node [shape=circle, width=0.6, height=0.6, fontname="Helvetica"];
+  edge [fontname="Helvetica", fontsize=11, arrowsize=0.9, penwidth=1.2, labeldistance=1.6];
+  __start [shape=point, width=0.1, label=""];
+  __start -> 1;
+  0 [shape=doublecircle];
+  0 -> 0 [label="a,b"];
+  1 -> 2 [label="a"];
+  1 -> 1 [label="b"];
+  2 -> 2 [label="a"];
+  2 -> 0 [label="b"];
+}

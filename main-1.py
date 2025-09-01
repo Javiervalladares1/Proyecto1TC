@@ -379,3 +379,269 @@ def complete_dfa(dfa: DFA) -> DFA:
     accepts = set(dfa.accept_states)
     start = dfa.start
     return DFA(start=start, accept_states=accepts, trans=trans, alphabet=list(dfa.alphabet))
+
+def partitions_minimize(dfa: DFA) -> DFA:
+    """
+    Minimización por ALGORTIMO DE PARTICIONES (Moore):
+    1) Completa el AFD (agrega sumidero si falta) para que δ esté total.
+    2) Partición inicial P = { F, Q\F } (sin bloques vacíos).
+    3) Mientras haya divisiones: refina cada bloque agrupando por firma
+       (para cada estado s: tuple( id_bloque( δ(s,a) ) para a en alfabeto )).
+    4) Construye el AFD mínimo tomando 1 representante por bloque.
+    """
+    dfa = complete_dfa(dfa)
+    alphabet = list(dfa.alphabet)
+
+    # Conjunto de estados (asegurado por complete_dfa)
+    states = set(dfa.trans.keys())
+    for m in dfa.trans.values():
+        states.update(m.values())
+
+    F = set(dfa.accept_states)
+    NF = states - F
+
+    # Partición inicial (sin bloques vacíos)
+    P: List[Set[int]] = [B for B in [F, NF] if B]
+
+    changed = True
+    while changed:
+        changed = False
+
+        # Mapa estado -> id de bloque actual
+        block_id: Dict[int, int] = {}
+        for i, block in enumerate(P):
+            for s in block:
+                block_id[s] = i
+
+        newP: List[Set[int]] = []
+        for block in P:
+            # Agrupar el bloque por firma de transiciones
+            groups: Dict[Tuple[int, ...], Set[int]] = {}
+            for s in block:
+                # Firma: a qué bloque va δ(s,a) para cada símbolo
+                sig = tuple(block_id[dfa.trans[s][a]] for a in alphabet)
+                groups.setdefault(sig, set()).add(s)
+
+            # Si el bloque se divide en >1 grupos, hubo refinamiento
+            if len(groups) > 1:
+                changed = True
+                newP.extend(groups.values())
+            else:
+                newP.append(block)
+
+        P = newP
+
+    # Construcción del AFD mínimo
+    block_id: Dict[int, int] = {}
+    for i, block in enumerate(P):
+        for s in block:
+            block_id[s] = i
+
+    new_start = block_id[dfa.start]
+    new_accepts = { block_id[s] for s in F }
+
+    new_trans: Dict[int, Dict[str, int]] = {}
+    for i, block in enumerate(P):
+        rep = next(iter(block))              # representante del bloque
+        new_trans[i] = {}
+        for a in alphabet:
+            t = dfa.trans[rep][a]
+            new_trans[i][a] = block_id[t]
+
+    return DFA(start=new_start, accept_states=new_accepts, trans=new_trans, alphabet=alphabet)
+
+
+# ====== Simulación de AFD ======
+
+def simulate_dfa(dfa: DFA, w: str) -> bool:
+    s = dfa.start
+    for ch in w:
+        s = dfa.trans.get(s, {}).get(ch, None)
+        if s is None:
+            return False
+    return s in dfa.accept_states
+
+# ====== Graficación (Graphviz/DOT) ======
+
+def _aggregate_edge_labels_nfa(nfa: NFA):
+    labels: Dict[Tuple[int,int], Set[str]] = {}
+    for u, m in nfa.trans.items():
+        for a, dests in m.items():
+            for v in dests:
+                labels.setdefault((u, v), set()).add(a)
+    # ordena con ε primero y luego alfabético
+    def _key(s: str): return (s != 'ε', s)
+    return {k: ",".join(sorted(v, key=_key)) for k, v in labels.items()}
+
+def _aggregate_edge_labels_dfa(dfa: DFA):
+    labels: Dict[Tuple[int,int], Set[str]] = {}
+    for u, m in dfa.trans.items():
+        for a, v in m.items():
+            labels.setdefault((u, v), set()).add(a)
+    return {k: ",".join(sorted(v)) for k, v in labels.items()}
+
+def _render_dot(dot_src: str, out_png: str) -> bool:
+    """
+    Genera PNG desde DOT. Primero intenta con python-graphviz; si falla,
+    invoca la CLI 'dot' (Graphviz del sistema). Siempre guarda el .dot
+    junto al .png para poder revisarlo.
+    """
+    base = out_png.rsplit(".", 1)[0]
+    dot_path = base + ".dot"
+    # guardo el .dot
+    with open(dot_path, "w", encoding="utf-8") as f:
+        f.write(dot_src)
+
+    # 1) binding de Python (graphviz.Source)
+    try:
+        import graphviz  # type: ignore
+        g = graphviz.Source(dot_src, format="png")
+        g.render(filename=base, cleanup=True)
+        return True
+    except Exception:
+        pass
+
+    # 2) CLI 'dot'
+    try:
+        subprocess.run(["dot", "-Tpng", dot_path, "-o", out_png], check=True)
+        return True
+    except Exception as e:
+        rprint(f"[yellow]No se pudo usar Graphviz (dot): {e}[/yellow]")
+        return False
+
+def draw_nfa(nfa: NFA, path_png: str) -> None:
+    edge_labels = _aggregate_edge_labels_nfa(nfa)
+
+    # recolecta nodos (opc.)
+    nodes = set(nfa.trans.keys())
+    for m in nfa.trans.values():
+        for dests in m.values():
+            nodes |= dests
+
+    lines = [
+        "digraph NFA {",
+        # layout elegante y claro
+        '  rankdir=LR; layout=dot; splines=true; overlap=false; concentrate=true; '
+        'outputorder=edgesfirst; nodesep=0.7; ranksep=1.1; margin=0.25;',
+        '  labelloc="t"; label="AFN (Thompson)"; fontsize=20; fontname="Helvetica";',
+        '  node [shape=circle, width=0.6, height=0.6, fontname="Helvetica"];',
+        '  edge [fontname="Helvetica", fontsize=11, arrowsize=0.9, penwidth=1.2, labeldistance=1.6];',
+        '  __start [shape=point, width=0.1, label=""];',
+        f'  __start -> {nfa.start};',
+        f'  {nfa.accept} [shape=doublecircle];'
+    ]
+    for (u, v), lab in edge_labels.items():
+        safe = lab.replace('"', r'\"')
+        lines.append(f'  {u} -> {v} [label="{safe}"];')
+    lines.append("}")
+
+    _render_dot("\n".join(lines), path_png)
+
+def draw_dfa(dfa: DFA, path_png: str, title: str = "AFD") -> None:
+    edge_labels = _aggregate_edge_labels_dfa(dfa)
+
+    nodes = set(dfa.trans.keys())
+    for m in dfa.trans.values():
+        for t in m.values():
+            nodes.add(t)
+
+    lines = [
+        "digraph DFA {",
+        '  rankdir=LR; layout=dot; splines=true; overlap=false; concentrate=true; '
+        'outputorder=edgesfirst; nodesep=0.7; ranksep=1.1; margin=0.25;',
+        f'  labelloc="t"; label="{title}"; fontsize=20; fontname="Helvetica";',
+        '  node [shape=circle, width=0.6, height=0.6, fontname="Helvetica"];',
+        '  edge [fontname="Helvetica", fontsize=11, arrowsize=0.9, penwidth=1.2, labeldistance=1.6];',
+        '  __start [shape=point, width=0.1, label=""];',
+        f'  __start -> {dfa.start};'
+    ]
+    # doble círculo en aceptaciones
+    for acc in sorted(dfa.accept_states):
+        lines.append(f'  {acc} [shape=doublecircle];')
+    for (u, v), lab in edge_labels.items():
+        safe = lab.replace('"', r'\"')
+        lines.append(f'  {u} -> {v} [label="{safe}"];')
+    lines.append("}")
+
+    _render_dot("\n".join(lines), path_png)
+
+# ====== CLI ======
+
+def process_regex(r: str, w: str, out_dir: str, epsilon: str = 'ε', show_steps: bool = False) -> Dict[str, str]:
+    rprint(f"[bold cyan]Regex:[/bold cyan] {r}")
+    res = infix_to_postfix(r)
+    if res.error_msg:
+        rprint(f"[red]Error Shunting Yard:[/red] {res.error_msg}")
+        return {}
+    try:
+        simple = desugar_postfix_extensions(res.postfix_tokens)
+    except Exception as e:
+        rprint(f"[red]Error desazucarando:[/red] {e}")
+        return {}
+    rprint(f"Postfix simplificado: [green]{''.join(simple)}[/green]  Alfabeto: {build_alphabet_from_tokens(simple, epsilon)}")
+
+    # AFN
+    nfa = postfix_to_nfa(simple, epsilon=epsilon)
+    ok_nfa = simulate_nfa(nfa, w)
+    nfa_img = f"{out_dir}/afn.png"
+    draw_nfa(nfa, nfa_img)
+    rprint(f"AFN acepta '{w}'? -> [bold]{'sí' if ok_nfa else 'no'}[/bold]. Imagen: {nfa_img}")
+
+    # AFD
+    dfa = nfa_to_dfa(nfa)
+    ok_dfa = simulate_dfa(dfa, w)
+    dfa_img = f"{out_dir}/afd.png"
+    draw_dfa(dfa, dfa_img, title="AFD (Subconjuntos)")
+    rprint(f"AFD acepta '{w}'? -> [bold]{'sí' if ok_dfa else 'no'}[/bold]. Imagen: {dfa_img}")
+
+    # Min
+    mdfa = partitions_minimize(dfa)
+    ok_mdfa = simulate_dfa(mdfa, w)
+    mdfa_img = f"{out_dir}/afd_min.png"
+    draw_dfa(mdfa, mdfa_img, title="AFD Minimizado (partitions)")
+    rprint(f"AFD minimizado acepta '{w}'? -> [bold]{'sí' if ok_mdfa else 'no'}[/bold]. Imagen: {mdfa_img}")
+
+    if show_steps:
+        rprint("[bold]Pasos shunting yard:[/bold]")
+        for p in res.pasos:
+            rprint(f" {p.paso:>3}  tok='{p.token}'  {p.accion:>8}  pila='{p.pila}'  salida='{p.salida}'")
+
+    return {"nfa_img": nfa_img, "dfa_img": dfa_img, "dfa_min_img": mdfa_img}
+
+def main():
+    ap = argparse.ArgumentParser(description="Proyecto 1: AFN/AFD desde regex")
+    ap.add_argument("-r", "--regex", type=str, help="Expresión regular r (infix)")
+    ap.add_argument("-w", "--word", type=str, required=True, help="Cadena w a evaluar")
+    ap.add_argument("-f", "--file", type=str, help="Archivo con expresiones regulares (una por línea)")
+    ap.add_argument("-o", "--outdir", type=str, default="out", help="Directorio de salida para imágenes")
+    ap.add_argument("--epsilon", type=str, default="ε", help="Símbolo para epsilon (default: ε)")
+    ap.add_argument("--steps", action="store_true", help="Mostrar pasos del shunting yard")
+    args = ap.parse_args()
+
+    if not args.regex and not args.file:
+        ap.error("Debe proporcionar --regex o --file")
+
+    # preparar salida
+    out_base = args.outdir
+    os.makedirs(out_base, exist_ok=True)
+
+    if args.regex:
+        out_dir = f"{out_base}/single"
+        os.makedirs(out_dir, exist_ok=True)
+        process_regex(args.regex.strip(), args.word, out_dir, epsilon=args.epsilon, show_steps=args.steps)
+
+    if args.file:
+        # procesa cada línea del archivo
+        with open(args.file, "r", encoding="utf-8") as f:
+            for i, line in enumerate(f, 1):
+                rx = (line or "").strip()
+                if not rx:
+                    continue
+                subdir = f"{out_base}/linea_{i}"
+                os.makedirs(subdir, exist_ok=True)
+                rprint("\n" + "═" * 80)
+                rprint(f"[yellow]Línea {i}:[/yellow] {rx}")
+                process_regex(rx, args.word, subdir, epsilon=args.epsilon, show_steps=args.steps)
+
+if __name__ == "__main__":
+    main()

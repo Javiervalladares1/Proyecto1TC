@@ -1,0 +1,10 @@
+(a|b)*abb(a|b)*
+(a*|b*)+
+(a|b)*a(a|b)*a(a|b)*
+(a|b)*ab
+bb(a|b)*
+(ab|ba)*
+a?b+
+(a|b)*a(a|b)*b(a|b)*
+(ε|a(a|b)*)
+(a|b)*

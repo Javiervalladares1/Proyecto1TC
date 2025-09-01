@@ -1,0 +1,23 @@
+digraph NFA {
+  rankdir=LR; layout=dot; splines=true; overlap=false; concentrate=true; outputorder=edgesfirst; nodesep=0.7; ranksep=1.1; margin=0.25;
+  labelloc="t"; label="AFN (Thompson)"; fontsize=20; fontname="Helvetica";
+  node [shape=circle, width=0.6, height=0.6, fontname="Helvetica"];
+  edge [fontname="Helvetica", fontsize=11, arrowsize=0.9, penwidth=1.2, labeldistance=1.6];
+  __start [shape=point, width=0.1, label=""];
+  __start -> 4;
+  11 [shape=doublecircle];
+  0 -> 1 [label="a"];
+  1 -> 5 [label="ε"];
+  2 -> 3 [label="ε"];
+  3 -> 5 [label="ε"];
+  4 -> 0 [label="ε"];
+  4 -> 2 [label="ε"];
+  5 -> 6 [label="ε"];
+  6 -> 7 [label="b"];
+  7 -> 10 [label="ε"];
+  8 -> 9 [label="b"];
+  9 -> 8 [label="ε"];
+  9 -> 11 [label="ε"];
+  10 -> 8 [label="ε"];
+  10 -> 11 [label="ε"];
+}

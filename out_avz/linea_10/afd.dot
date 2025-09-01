@@ -1,0 +1,17 @@
+digraph DFA {
+  rankdir=LR; layout=dot; splines=true; overlap=false; concentrate=true; outputorder=edgesfirst; nodesep=0.7; ranksep=1.1; margin=0.25;
+  labelloc="t"; label="AFD (Subconjuntos)"; fontsize=20; fontname="Helvetica";
+  node [shape=circle, width=0.6, height=0.6, fontname="Helvetica"];
+  edge [fontname="Helvetica", fontsize=11, arrowsize=0.9, penwidth=1.2, labeldistance=1.6];
+  __start [shape=point, width=0.1, label=""];
+  __start -> 0;
+  0 [shape=doublecircle];
+  1 [shape=doublecircle];
+  2 [shape=doublecircle];
+  0 -> 1 [label="a"];
+  0 -> 2 [label="b"];
+  2 -> 1 [label="a"];
+  2 -> 2 [label="b"];
+  1 -> 1 [label="a"];
+  1 -> 2 [label="b"];
+}
